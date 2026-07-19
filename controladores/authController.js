@@ -11,25 +11,49 @@ async function registro(req, res) {
     return res.status(400).json({ error: 'Todos los campos son obligatorios' });
   }
 
+  const cliente = await pool.connect();
   try {
-    const yaExiste = await pool.query('SELECT id FROM usuarios WHERE email = $1', [email]);
+    await cliente.query('BEGIN');
+
+    // Verificar si el email ya existe
+    const yaExiste = await cliente.query('SELECT id FROM usuarios WHERE email = $1', [email]);
     if (yaExiste.rows.length > 0) {
+      await cliente.query('ROLLBACK');
       return res.status(409).json({ error: 'Ese email ya está registrado' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const resultado = await pool.query(
+    // 1. Insertar en tabla usuarios
+    const usuarioResult = await cliente.query(
       `INSERT INTO usuarios (nombre, email, password_hash, rol)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, nombre, email, rol`,
+       VALUES ($1, $2, $3, $4) RETURNING id, nombre, email, rol`,
       [nombre, email, passwordHash, rol]
     );
+    const usuario = usuarioResult.rows[0];
 
-    res.status(201).json(resultado.rows[0]);
+    // 2. Si es cliente, también insertar en tabla clientes
+    let clienteId = null;
+    if (rol === 'cliente') {
+      // Generamos una cédula temporal única basada en el timestamp
+      const cedulaTemporal = `TEMP${Date.now()}`;
+      const clienteResult = await cliente.query(
+        `INSERT INTO clientes (usuario_id, nombre, cedula, email)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [usuario.id, nombre, cedulaTemporal, email]
+      );
+      clienteId = clienteResult.rows[0].id;
+    }
+
+    await cliente.query('COMMIT');
+
+    res.status(201).json({ ...usuario, cliente_id: clienteId });
   } catch (error) {
+    await cliente.query('ROLLBACK');
     console.error(error);
     res.status(500).json({ error: 'Error al registrar usuario' });
+  } finally {
+    cliente.release();
   }
 }
 
@@ -54,15 +78,32 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
+    // Si es cliente, buscamos su cliente_id para filtrar vehículos y órdenes
+    let clienteId = null;
+    if (usuario.rol === 'cliente') {
+      const clienteResult = await pool.query(
+        'SELECT id FROM clientes WHERE usuario_id = $1', [usuario.id]
+      );
+      if (clienteResult.rows.length > 0) {
+        clienteId = clienteResult.rows[0].id;
+      }
+    }
+
     const token = jwt.sign(
-      { id: usuario.id, email: usuario.email, rol: usuario.rol },
+      { id: usuario.id, email: usuario.email, rol: usuario.rol, cliente_id: clienteId },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
 
     res.json({
       token,
-      usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol }
+      usuario: {
+        id: usuario.id,
+        nombre: usuario.nombre,
+        email: usuario.email,
+        rol: usuario.rol,
+        cliente_id: clienteId
+      }
     });
   } catch (error) {
     console.error(error);
