@@ -5,7 +5,7 @@ require('dotenv').config();
 
 // POST /api/auth/registro
 async function registro(req, res) {
-  const { nombre, email, password, rol } = req.body;
+  const { nombre, email, password, rol, telefono } = req.body;
 
   if (!nombre || !email || !password || !rol) {
     return res.status(400).json({ error: 'Todos los campos son obligatorios' });
@@ -38,9 +38,9 @@ async function registro(req, res) {
       // Generamos una cédula temporal única basada en el timestamp
       const cedulaTemporal = `TEMP${Date.now()}`;
       const clienteResult = await cliente.query(
-        `INSERT INTO clientes (usuario_id, nombre, cedula, email)
-         VALUES ($1, $2, $3, $4) RETURNING id`,
-        [usuario.id, nombre, cedulaTemporal, email]
+      `INSERT INTO clientes (usuario_id, nombre, cedula, email, telefono)
+      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [usuario.id, nombre, `TEMP${usuario.id}`, email, telefono || null]
       );
       clienteId = clienteResult.rows[0].id;
     }
