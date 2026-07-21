@@ -5,7 +5,11 @@ async function listar(req, res) {
     const resultado = await pool.query(
       'SELECT * FROM servicios WHERE activo = TRUE ORDER BY id'
     );
+
+    console.log(resultado.rows);
+
     res.json(resultado.rows);
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error al obtener servicios' });
