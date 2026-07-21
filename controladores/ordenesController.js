@@ -1,21 +1,32 @@
 const pool = require('../db');
 
 async function listar(req, res) {
-  const { estado } = req.query;
+  const { estado, cliente_id } = req.query;
   try {
     let query = `
-      SELECT o.*, v.placa, v.marca, v.modelo, c.nombre AS cliente, m.nombre AS mecanico
+      SELECT o.*, v.placa, v.marca, v.modelo, c.nombre AS cliente,
+             c.id AS cliente_id, m.nombre AS mecanico
       FROM ordenes_trabajo o
       JOIN vehiculos v ON o.vehiculo_id = v.id
       JOIN clientes c ON v.cliente_id = c.id
       LEFT JOIN mecanicos m ON o.mecanico_id = m.id
+      WHERE 1=1
     `;
     const params = [];
+    let idx = 1;
 
+    // Filtro por cliente_id (para clientes, no admin)
+    if (cliente_id) {
+      query += ` AND c.id = $${idx++}`;
+      params.push(cliente_id);
+    }
+
+    // Filtro por estado
     if (estado) {
-      query += ' WHERE o.estado = $1';
+      query += ` AND o.estado = $${idx++}`;
       params.push(estado);
     }
+
     query += ' ORDER BY o.fecha_ingreso DESC';
 
     const resultado = await pool.query(query, params);
@@ -57,8 +68,6 @@ async function obtenerPorId(req, res) {
   }
 }
 
-// body esperado: { vehiculo_id, mecanico_id, fecha_salida_estimada, observaciones,
-//                   servicios: [{ servicio_id, cantidad, precio_unitario }, ...] }
 async function crear(req, res) {
   const { vehiculo_id, mecanico_id, fecha_salida_estimada, observaciones, servicios } = req.body;
 
@@ -86,7 +95,6 @@ async function crear(req, res) {
     }
 
     await cliente.query('COMMIT');
-
     const ordenFinal = await pool.query('SELECT * FROM ordenes_trabajo WHERE id = $1', [ordenId]);
     res.status(201).json(ordenFinal.rows[0]);
   } catch (error) {
@@ -108,7 +116,6 @@ async function cambiarEstado(req, res) {
 
   try {
     const fechaEntrega = estado === 'entregado' ? new Date() : null;
-
     const resultado = await pool.query(
       `UPDATE ordenes_trabajo
        SET estado = $1, fecha_entrega_real = COALESCE($2, fecha_entrega_real)
