@@ -26,7 +26,7 @@ async function listarTodos(req, res) {
 }
 
 async function crear(req, res) {
-  const { nombre, descripcion, precio_base } = req.body;
+  const { nombre, descripcion, precio_base, tipo } = req.body;
 
   if (!nombre || precio_base === undefined) {
     return res.status(400).json({
@@ -36,11 +36,11 @@ async function crear(req, res) {
 
   try {
     const resultado = await pool.query(
-      `INSERT INTO servicios
-      (nombre, descripcion, precio_base)
-      VALUES ($1,$2,$3)
-      RETURNING *`,
-      [nombre, descripcion, precio_base]
+    `INSERT INTO servicios
+    (nombre, descripcion, precio_base, tipo)
+    VALUES ($1,$2,$3,$4)
+    RETURNING *`,
+    [nombre, descripcion, precio_base, tipo]
     );
 
     res.status(201).json(resultado.rows[0]);
@@ -53,21 +53,25 @@ async function crear(req, res) {
 
 async function actualizar(req, res) {
 
-  const { nombre, descripcion, precio_base } = req.body;
+  const { nombre, descripcion, precio_base, tipo } = req.body;
 
   try {
 
     const resultado = await pool.query(
-
-      `UPDATE servicios
-      SET nombre=$1,
-          descripcion=$2,
-          precio_base=$3
-      WHERE id=$4
-      RETURNING *`,
-
-      [nombre, descripcion, precio_base, req.params.id]
-
+    `UPDATE servicios
+    SET nombre=$1,
+    descripcion=$2,
+    precio_base=$3,
+    tipo=$4
+    WHERE id=$5
+    RETURNING *`,
+    [
+    nombre,
+    descripcion,
+    precio_base,
+    tipo,
+    req.params.id
+    ]
     );
 
     if (resultado.rows.length === 0) {
