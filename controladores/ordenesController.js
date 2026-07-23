@@ -69,20 +69,63 @@ async function obtenerPorId(req, res) {
 }
 
 async function crear(req, res) {
-  const { vehiculo_id, mecanico_id, fecha_salida_estimada, observaciones, servicios } = req.body;
+  // 1. Recibimos latitud, longitud, tipo_servicio y estado desde el body
+  const { 
+    vehiculo_id, 
+    mecanico_id, 
+    fecha_salida_estimada, 
+    observaciones, 
+    servicios,
+    latitud,
+    longitud,
+    lat,
+    lng,
+    tipo_servicio,
+    estado
+  } = req.body;
 
   if (!vehiculo_id || !servicios || servicios.length === 0) {
     return res.status(400).json({ error: 'vehiculo_id y al menos un servicio son obligatorios' });
+  }
+
+  // Normalizar latitud/longitud
+  const latVal = latitud ?? lat ?? null;
+  const lngVal = longitud ?? lng ?? null;
+
+  // Normalizar tipo_servicio y estado (si mandan "en proceso" con espacio, lo convierte a "en_proceso")
+  const tipoServicioVal = tipo_servicio || 'mantenimiento';
+  let estadoVal = estado || 'pendiente';
+  if (estadoVal === 'en proceso') {
+    estadoVal = 'en_proceso';
   }
 
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
 
+    // 2. Insertamos latitud, longitud, tipo_servicio y estado en la BD
     const ordenResultado = await cliente.query(
-      `INSERT INTO ordenes_trabajo (vehiculo_id, mecanico_id, fecha_salida_estimada, observaciones)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [vehiculo_id, mecanico_id || null, fecha_salida_estimada || null, observaciones || null]
+      `INSERT INTO ordenes_trabajo (
+        vehiculo_id, 
+        mecanico_id, 
+        fecha_salida_estimada, 
+        observaciones,
+        latitud,
+        longitud,
+        tipo_servicio,
+        estado
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [
+        vehiculo_id, 
+        mecanico_id || null, 
+        fecha_salida_estimada || null, 
+        observaciones || null,
+        latVal,
+        lngVal,
+        tipoServicioVal,
+        estadoVal
+      ]
     );
     const ordenId = ordenResultado.rows[0].id;
 
