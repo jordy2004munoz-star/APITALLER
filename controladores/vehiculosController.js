@@ -66,35 +66,76 @@ async function crear(req, res) {
 }
 
 async function actualizar(req, res) {
-  const { marca, modelo, anio, color, kilometraje } = req.body;
+  const { placa, marca, modelo, anio, color, kilometraje } = req.body;
   try {
     const resultado = await pool.query(
-      `UPDATE vehiculos SET marca=$1, modelo=$2, anio=$3, color=$4, kilometraje=$5
-       WHERE id=$6 RETURNING *`,
-      [marca, modelo, anio, color, kilometraje, req.params.id]
+      `UPDATE vehiculos 
+       SET placa = COALESCE($1, placa),
+           marca = COALESCE($2, marca),
+           modelo = COALESCE($3, modelo),
+           anio = COALESCE($4, anio),
+           color = COALESCE($5, color),
+           kilometraje = COALESCE($6, kilometraje)
+       WHERE id = $7 
+       RETURNING *`,
+      [placa, marca, modelo, anio, color, kilometraje, req.params.id]
     );
+
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Vehículo no encontrado' });
     }
+
     res.json(resultado.rows[0]);
   } catch (error) {
-    console.error(error);
+    console.error('Error al actualizar vehículo:', error);
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Ya existe un vehículo con esa placa' });
+    }
     res.status(500).json({ error: 'Error al actualizar vehículo' });
   }
 }
 
 async function eliminar(req, res) {
+  const vehiculoId = req.params.id;
+  const client = await pool.connect();
+
   try {
-    const resultado = await pool.query(
-      'DELETE FROM vehiculos WHERE id=$1 RETURNING id', [req.params.id]
+    // Iniciamos transacción
+    await client.query('BEGIN');
+
+    // 1. Eliminar los detalles/servicios de las órdenes de este vehículo
+    await client.query(`
+      DELETE FROM orden_detalles 
+      WHERE orden_id IN (SELECT id FROM ordenes_trabajo WHERE vehiculo_id = $1)
+    `, [vehiculoId]);
+
+    // 2. Eliminar las órdenes de trabajo del vehículo
+    await client.query(
+      'DELETE FROM ordenes_trabajo WHERE vehiculo_id = $1',
+      [vehiculoId]
     );
+
+    // 3. Eliminar el vehículo
+    const resultado = await client.query(
+      'DELETE FROM vehiculos WHERE id = $1 RETURNING id',
+      [vehiculoId]
+    );
+
     if (resultado.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Vehículo no encontrado' });
     }
-    res.json({ mensaje: 'Vehículo eliminado correctamente' });
+
+    // Confirmamos los cambios
+    await client.query('COMMIT');
+    res.json({ mensaje: 'Vehículo y todo su historial eliminados correctamente' });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error al eliminar vehículo' });
+    await client.query('ROLLBACK');
+    console.error('Error al eliminar vehículo en cascada:', error);
+    res.status(500).json({ error: 'Error al eliminar el vehículo' });
+  } finally {
+    client.release();
   }
 }
 
