@@ -56,26 +56,27 @@ async function crear(req, res) {
 }
 
 async function actualizar(req, res) {
-
-  const { nombre, descripcion, precio_base, tipo } = req.body;
+  // 1. Añadimos "activo" a la desestructuración de req.body
+  const { nombre, descripcion, precio_base, tipo, activo } = req.body;
 
   try {
-
     const resultado = await pool.query(
-    `UPDATE servicios
-    SET nombre=$1,
-    descripcion=$2,
-    precio_base=$3,
-    tipo=$4
-    WHERE id=$5
-    RETURNING *`,
-    [
-    nombre,
-    descripcion,
-    precio_base,
-    tipo,
-    req.params.id
-    ]
+      `UPDATE servicios
+       SET nombre = $1,
+           descripcion = $2,
+           precio_base = $3,
+           tipo = $4,
+           activo = $5
+       WHERE id = $6
+       RETURNING *`,
+      [
+        nombre,
+        descripcion,
+        precio_base,
+        tipo,
+        activo,         // $5
+        req.params.id   // $6
+      ]
     );
 
     if (resultado.rows.length === 0) {
@@ -87,15 +88,11 @@ async function actualizar(req, res) {
     res.json(resultado.rows[0]);
 
   } catch (error) {
-
     console.error(error);
-
     res.status(500).json({
       error: 'Error al actualizar servicio'
     });
-
   }
-
 }
 
 // NUEVO
