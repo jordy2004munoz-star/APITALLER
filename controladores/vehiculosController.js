@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { subirACloudinary } = require('../middleware/uploadMiddleware');
 
 async function listar(req, res) {
   const { cliente_id } = req.query;
@@ -50,10 +51,26 @@ async function crear(req, res) {
   }
 
   try {
+    let imagen_url = null;
+
+    // Si viene un archivo enviado desde la app, lo subimos a Cloudinary
+    if (req.file) {
+      imagen_url = await subirACloudinary(req.file.buffer);
+    }
+
     const resultado = await pool.query(
-      `INSERT INTO vehiculos (cliente_id, placa, marca, modelo, anio, color, kilometraje)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [cliente_id, placa, marca, modelo, anio || null, color || null, kilometraje || 0]
+      `INSERT INTO vehiculos (cliente_id, placa, marca, modelo, anio, color, kilometraje, imagen_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [
+        cliente_id, 
+        placa, 
+        marca, 
+        modelo, 
+        anio || null, 
+        color || null, 
+        kilometraje || 0, 
+        imagen_url
+      ]
     );
     res.status(201).json(resultado.rows[0]);
   } catch (error) {
@@ -68,6 +85,13 @@ async function crear(req, res) {
 async function actualizar(req, res) {
   const { placa, marca, modelo, anio, color, kilometraje } = req.body;
   try {
+    let imagen_url = req.body.imagen_url || null;
+
+    // Si el usuario subió una nueva foto al editar
+    if (req.file) {
+      imagen_url = await subirACloudinary(req.file.buffer);
+    }
+
     const resultado = await pool.query(
       `UPDATE vehiculos 
        SET placa = COALESCE($1, placa),
@@ -75,10 +99,11 @@ async function actualizar(req, res) {
            modelo = COALESCE($3, modelo),
            anio = COALESCE($4, anio),
            color = COALESCE($5, color),
-           kilometraje = COALESCE($6, kilometraje)
-       WHERE id = $7 
+           kilometraje = COALESCE($6, kilometraje),
+           imagen_url = COALESCE($7, imagen_url)
+       WHERE id = $8 
        RETURNING *`,
-      [placa, marca, modelo, anio, color, kilometraje, req.params.id]
+      [placa, marca, modelo, anio, color, kilometraje, imagen_url, req.params.id]
     );
 
     if (resultado.rows.length === 0) {
